@@ -32,8 +32,27 @@ export class UsersService {
 
     const signUpVerifyToken = uuid.v1();
 
-    await this.saveUserUsingQueryRunner(createUserDto, signUpVerifyToken);
+    // await this.usersRepository.save(createUserDto, signUpVerifyToken);
+    // await this.saveUserUsingQueryRunner(createUserDto, signUpVerifyToken);
+    await this.saveUserUsingTransaction(createUserDto, signUpVerifyToken);
     await this.sendMemberJoinEmail(email, signUpVerifyToken);
+  }
+
+  private async saveUserUsingTransaction(
+    createUserDto: CreateUserDto,
+    signUpVerifyToken: string,
+  ) {
+    await this.dataSource.transaction(async (manager) => {
+      const { name, email, password } = createUserDto;
+      const user = new UserEntity();
+      user.id = ulid();
+      user.name = name;
+      user.email = email;
+      user.password = password;
+      user.signUpVerifyToken = signUpVerifyToken;
+
+      await manager.save(user);
+    });
   }
 
   private async saveUserUsingQueryRunner(
