@@ -29,7 +29,7 @@ export class EmailService {
   }
 
   async sendMailJoinVerification(emailAddress: string, signUpVerifyToken: any) {
-    const baseUrl = 'http://localhost:3000';
+    const baseUrl = process.env.EMAIL_BASE_URL;
 
     const url = `${baseUrl}/users/email-verify?signUpVerifyToken=${signUpVerifyToken}`;
 
@@ -39,7 +39,7 @@ export class EmailService {
       html:
         '' +
         '가입확인 버튼을 누르시면 가입 인증이 완료됩니다. <br/>' +
-        '<form action="${url}" method="POST">' +
+        `<form action="${url}" method="POST">` +
         '   <button>가입확인</button>' +
         '</form>',
     };

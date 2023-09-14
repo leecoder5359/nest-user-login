@@ -1,30 +1,86 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import * as uuid from 'uuid';
 import { EmailService } from '../email/email.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { UserEntity } from './entity/user.entity';
+import { DataSource, Repository } from 'typeorm';
+import { ulid } from 'ulid';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly emailService: EmailService) {}
+  constructor(
+    private readonly emailService: EmailService,
+    @InjectRepository(UserEntity)
+    private usersRepository: Repository<UserEntity>,
+    private dataSource: DataSource,
+  ) {}
 
   remove(id: string) {
     return `this action removes #${id} users`;
   }
 
-  async createUser(name: string, email: string, password: string) {
-    await this.checkUserExists(email);
+  async createUser(createUserDto: CreateUserDto) {
+    const { email } = createUserDto;
+    const userExist = await this.checkUserExists(email);
+
+    if (userExist) {
+      throw new UnprocessableEntityException(
+        '해당 이메일로는 가입할 수 없습니다.',
+      );
+    }
 
     const signUpVerifyToken = uuid.v1();
 
-    await this.saveUser(name, email, signUpVerifyToken);
+    await this.saveUserUsingQueryRunner(createUserDto, signUpVerifyToken);
     await this.sendMemberJoinEmail(email, signUpVerifyToken);
   }
 
-  private async checkUserExists(email: string) {
-    return false;
+  private async saveUserUsingQueryRunner(
+    createUserDto: CreateUserDto,
+    signUpVerifyToken: string,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const { name, email, password } = createUserDto;
+      const user = new UserEntity();
+      user.id = ulid();
+      user.name = name;
+      user.email = email;
+      user.password = password;
+      user.signUpVerifyToken = signUpVerifyToken;
+
+      await queryRunner.manager.save(user);
+
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+    } finally {
+      await queryRunner.release();
+    }
   }
 
-  private async saveUser(name: string, email: string, signUpVerifyToken: any) {
-    return;
+  private async checkUserExists(email: string) {
+    const user = await this.usersRepository.findOne({
+      where: { email: email },
+    });
+
+    return user;
+  }
+
+  async saveUser(createUserDto: CreateUserDto, signUpVerifyToken: string) {
+    const user = new UserEntity();
+    user.id = ulid();
+    user.name = createUserDto.name;
+    user.email = createUserDto.email;
+    user.password = createUserDto.password;
+    user.signUpVerifyToken = signUpVerifyToken;
+
+    await this.usersRepository.save(user);
   }
 
   private async sendMemberJoinEmail(email: string, signUpVerifyToken: any) {
